@@ -9,6 +9,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import ta
+from sklearn.preprocessing import MinMaxScaler
+import os
+import base64
+import tempfile
+import ollama
+
 
 st. set_page_config(
     layout="wide",
@@ -51,7 +57,6 @@ def process_data(data):
         data.reset_index(inplace=True)
         data.rename(columns={'Date': 'Datetime'}, inplace=True)
     return data
-
 
 with st.sidebar:
     sel_ticker = st.multiselect("Portfolio Builder", placeholder="Search tickers", options=ticker_list.symbol_name)
@@ -113,7 +118,7 @@ def fetch_stock_data_cached(ticker, start_date, end_date):
 
 
 
-tab1, tab2 = st.tabs(["Portfolio", "Calculator"])
+tab1, tab2, tab3 = st.tabs(["Portfolio", "Calculator", "MARKET"])
 
 if len(sel_ticker) == 0:
     st.info("Select tickers to view plots")
@@ -154,6 +159,38 @@ else:
             
             fig.update_layout(xaxis_title=None, yaxis_title=None)
             cols[i % 3].plotly_chart(fig, use_container_width=True, config={"responsive": True})
+
+         # Analyze chart with LLaMA 3.2 Vision
+        st.subheader("AI-Powered Analysis")
+        if st.button("Run AI Analysis"):
+            with st.spinner("Analyzing the chart, please wait..."):
+                # Save chart as a temporary image
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+                    fig.write_image(tmpfile.name)
+                    tmpfile_path = tmpfile.name
+
+                # Read image and encode to Base64
+                with open(tmpfile_path, "rb") as image_file:
+                    image_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+                # Prepare AI analysis request
+                messages = [{
+                    'role': 'user',
+                    'content': """You are a Stock Trader specializing in Technical Analysis at a top financial institution.
+                                Analyze the stock chart's technical indicators and provide a buy/hold/sell recommendation.
+                                Base your recommendation only on the candlestick chart and the displayed technical indicators.
+                                First, provide the recommendation, then, provide your detailed reasoning.
+                    """,
+                    'images': [image_data]
+                }]
+                response = ollama.chat(model='llama3.2-vision', messages=messages)
+
+                # Display AI analysis result
+                st.write("**AI Analysis Results:**")
+                st.write(response["message"]["content"])
+
+                # Clean up temporary file
+                os.remove(tmpfile_path)
 
 
 

@@ -5,4 +5,5 @@ yfinance
 prophet
 ta
 streamlit
+ollama
 
