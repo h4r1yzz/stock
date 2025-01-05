@@ -1,9 +1,0 @@
-plotly
-pandas
-datetimenumpy
-yfinance
-prophet
-ta
-streamlit
-ollama
-

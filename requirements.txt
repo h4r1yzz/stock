@@ -1,0 +1,10 @@
+numpy
+pandas
+yfinance
+financedatabase
+plotly
+streamlit
+ta
+ollama
+finvizfinance
+joblib

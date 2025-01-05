@@ -3,17 +3,17 @@ import datetime as dt
 import pandas as pd
 from datetime import datetime, timedelta
 import yfinance as yf
-from prophet import Prophet
 import financedatabase as fd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import ta
-from sklearn.preprocessing import MinMaxScaler
 import os
 import base64
 import tempfile
 import ollama
+from finvizfinance.quote import finvizfinance
+import joblib
 
 
 st. set_page_config(
@@ -40,6 +40,7 @@ def add_technical_indicators(data):
     return data
 
 # Fetch stock data
+@st.cache_data
 def fetch_stock_data(ticker, period, interval):
     end_date = datetime.now()  # Use datetime.now() correctly
     if period == '1wk':
@@ -58,6 +59,47 @@ def process_data(data):
         data.rename(columns={'Date': 'Datetime'}, inplace=True)
     return data
 
+loaded_few_shot_clf = joblib.load('few_shot_model.pkl')
+
+# Sentiment analysis function using pre-trained models
+@st.cache_data
+def get_sentiment_analysis(tickers, start_date, end_date):
+    all_sentiment_data = []
+
+    # Convert start_date and end_date to datetime
+    start_date = datetime.combine(start_date, datetime.min.time())
+    end_date = datetime.combine(end_date, datetime.max.time())
+
+    for ticker in tickers:
+        stock = finvizfinance(ticker)
+        news_df = stock.ticker_news()
+
+        news_df = news_df[['Date', 'Link', 'Title']]
+
+        news_df['Date'] = pd.to_datetime(news_df['Date'])
+
+        filtered_news_df = news_df[(news_df['Date'] >= start_date) & (news_df['Date'] <= end_date)]
+
+        company_name = ticker.split()[0]  
+        keywords = [ticker, company_name]
+
+        pattern = '|'.join(keywords)
+
+        filtered_news_df = news_df[news_df['Title'].str.contains(pattern, case=False, na=False)]
+
+        filtered_news_df = filtered_news_df[~filtered_news_df['Title'].str.endswith('?')]
+
+        filtered_news_df.loc[:, 'Sentiment_few'] = loaded_few_shot_clf.predict(filtered_news_df['Title'])
+
+        filtered_news_df.loc[:, 'Ticker'] = ticker
+
+        all_sentiment_data.append(filtered_news_df)
+
+    # Concatenate all DataFrames for different tickers into a single DataFrame
+    combined_sentiment_df = pd.concat(all_sentiment_data, ignore_index=True)
+
+    return combined_sentiment_df[['Ticker', 'Date', 'Link', 'Title', 'Sentiment_few']]
+
 with st.sidebar:
     sel_ticker = st.multiselect("Portfolio Builder", placeholder="Search tickers", options=ticker_list.symbol_name)
     sel_ticker_list = ticker_list[ticker_list.symbol_name.isin(sel_ticker)].symbol
@@ -73,8 +115,8 @@ with st.sidebar:
             cols[i % 4].subheader(ticker)
 
     cols = st.columns(2)
-    sel_dt1 = cols[0].date_input('Start Date', value=dt.datetime(2024, 1, 1), format='YYYY-MM-DD')
-    sel_dt2 = cols[1].date_input('End Date', value=dt.datetime(2024, 8, 6), format='YYYY-MM-DD')
+    sel_dt1 = cols[0].date_input('Start Date', format='YYYY-MM-DD')
+    sel_dt2 = cols[1].date_input('End Date', format='YYYY-MM-DD')
 
 
     if len(sel_ticker) != 0:
@@ -85,7 +127,7 @@ with st.sidebar:
         yfdata['Close'] = yfdata['price']
         yfdata = add_technical_indicators(yfdata)
 
-        # Sidebar Header
+    # Sidebar Header
     st.sidebar.header('Real-Time Stock Prices')
 
     # Use Portfolio Builder's selected tickers (sel_ticker) for Real-Time Prices
@@ -118,7 +160,7 @@ def fetch_stock_data_cached(ticker, start_date, end_date):
 
 
 
-tab1, tab2, tab3 = st.tabs(["Portfolio", "Calculator", "MARKET"])
+tab1, tab2, tab3, tab4 = st.tabs(["Portfolio", "Calculator", "Sentimental", "Analysis"])
 
 if len(sel_ticker) == 0:
     st.info("Select tickers to view plots")
@@ -160,38 +202,6 @@ else:
             fig.update_layout(xaxis_title=None, yaxis_title=None)
             cols[i % 3].plotly_chart(fig, use_container_width=True, config={"responsive": True})
 
-         # Analyze chart with LLaMA 3.2 Vision
-        st.subheader("AI-Powered Analysis")
-        if st.button("Run AI Analysis"):
-            with st.spinner("Analyzing the chart, please wait..."):
-                # Save chart as a temporary image
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
-                    fig.write_image(tmpfile.name)
-                    tmpfile_path = tmpfile.name
-
-                # Read image and encode to Base64
-                with open(tmpfile_path, "rb") as image_file:
-                    image_data = base64.b64encode(image_file.read()).decode('utf-8')
-
-                # Prepare AI analysis request
-                messages = [{
-                    'role': 'user',
-                    'content': """You are a Stock Trader specializing in Technical Analysis at a top financial institution.
-                                Analyze the stock chart's technical indicators and provide a buy/hold/sell recommendation.
-                                Base your recommendation only on the candlestick chart and the displayed technical indicators.
-                                First, provide the recommendation, then, provide your detailed reasoning.
-                    """,
-                    'images': [image_data]
-                }]
-                response = ollama.chat(model='llama3.2-vision', messages=messages)
-
-                # Display AI analysis result
-                st.write("**AI Analysis Results:**")
-                st.write(response["message"]["content"])
-
-                # Clean up temporary file
-                os.remove(tmpfile_path)
-
 
 
     with tab2:
@@ -218,7 +228,8 @@ else:
 
         # Update DataFrame with amounts
         df = yfdata.copy()
-        df['amount'] = df['ticker'].map(amounts) * (1 + df['price_pct'])
+        df.loc[:, 'amount'] = df['ticker'].map(amounts) * (1 + df['price_pct'])
+
 
         # Calculate total investments per date
         dfsum = df.groupby('Date')['amount'].sum().reset_index()
@@ -242,3 +253,74 @@ else:
             ))
             fig.update_layout(xaxis_title=None, yaxis_title=None)
             cols_tab2[1].plotly_chart(fig, use_container_width=True)
+
+    with tab3:
+
+        st.subheader("Stock News Sentiment Analysis")
+        # Get sentiment analysis data for the selected tickers
+        all_sentiment_data = get_sentiment_analysis(sel_ticker_list, sel_dt1, sel_dt2)
+
+        for ticker in sel_ticker_list:
+            st.write(f"**Sentiment for {ticker}:**")
+
+            # Filter the combined sentiment data for the current ticker
+            sentiment_df = all_sentiment_data[all_sentiment_data['Ticker'] == ticker]
+
+            # Further filter the data to ensure it falls within the selected date range
+            sentiment_df = sentiment_df[(sentiment_df['Date'] >= pd.to_datetime(sel_dt1)) & 
+                                        (sentiment_df['Date'] <= pd.to_datetime(sel_dt2))]
+
+            # Add index column to display serial numbering in the table
+            sentiment_df['Index'] = range(1, len(sentiment_df) + 1)
+
+            # Reorder columns for display
+            sentiment_df_display = sentiment_df[['Index', 'Date', 'Title', 'Link', 'Sentiment_few']]
+
+            # Display the sentiment analysis results in a table format
+            st.table(sentiment_df_display)
+
+            st.write("---")
+
+    with tab4:
+        # Analyze chart with LLaMA 3.2 Vision
+        for ticker in sel_ticker_list:
+            st.write(f"**Analysis for {ticker}:**")
+            if st.button(f"Run AI Analysis for {ticker}"):
+                with st.spinner(f"Analyzing the chart for {ticker}, please wait..."):
+                    # Generate and save chart for the current ticker
+                    fig = px.line(yfdata[yfdata.ticker == ticker], x='Date', y='price', markers=True)
+                    fig.add_trace(go.Scatter(x=yfdata[yfdata.ticker == ticker]['Date'], 
+                                            y=yfdata[yfdata.ticker == ticker]['SMA_20'], 
+                                            mode='lines', name=f'{ticker} SMA_20'))
+                    fig.add_trace(go.Scatter(x=yfdata[yfdata.ticker == ticker]['Date'], 
+                                            y=yfdata[yfdata.ticker == ticker]['EMA_20'], 
+                                            mode='lines', name=f'{ticker} EMA_20'))
+                    
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+                        fig.write_image(tmpfile.name)
+                        tmpfile_path = tmpfile.name
+
+                    # Read image and encode to Base64
+                    with open(tmpfile_path, "rb") as image_file:
+                        image_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+                    # Prepare AI analysis request
+                    messages = [{
+                        'role': 'user',
+                        'content': f"""You are a Stock Trader specializing in Technical Analysis at a top financial institution.
+                                        Analyze the stock chart's technical indicators for {ticker} and provide a buy/hold/sell recommendation.
+                                        Base your recommendation only on the candlestick chart and the displayed technical indicators.
+                                        First, provide the recommendation, then, provide your detailed reasoning.
+                        """,
+                        'images': [image_data]
+                    }]
+                    response = ollama.chat(model='llama3.2-vision', messages=messages)
+
+                    # Display AI analysis result
+                    st.write("**AI Analysis Results:**")
+                    st.write(response["message"]["content"])
+
+                    # Clean up temporary file
+                    os.remove(tmpfile_path)
+
+
