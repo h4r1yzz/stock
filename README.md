@@ -75,26 +75,54 @@ Run the Application:
 streamlit run app.py
 ```
 
+## Installing and Running Ollama on Your Local Machine
+Step 1: Download and Install Ollama
+
+Go to the official Ollama page.
+
+Download the Installer:
+
+Download the appropriate installer for your operating system (Windows, macOS, or Linux).
+
+Install Ollama:
+
+Step 2: Run Ollama Locally
+Start the Ollama Server:
+
+After installation, start the Ollama server by running the following command in your terminal:
+```
+ollama run llama3.2-vision
+```
+This will start the Ollama server on your local machine.
+
+Verify the Installation:
+
+Open a new terminal window and run the following command to verify that Ollama is running:
+```
+ollama list
+```
+If the installation is successful, you should see a list of available models.
+
 ## Usage
 1. Portfolio Builder
-Select stocks or ETFs from the dropdown menu.
+   Select stocks or ETFs from the dropdown menu.
 
-View real-time prices and percentage changes for selected stocks.
+   View real-time prices and percentage changes for selected stocks.
 
-Analyze portfolio performance using interactive charts.
+   Analyze portfolio performance using interactive charts.
 
 2. Sentiment Analysis
-Enter a news headline or fetch news related to selected stocks.
+   Enter a news headline or fetch news related to selected stocks.
 
-View sentiment analysis results (positive, negative, or neutral).
+   View sentiment analysis results (positive, negative, or neutral).
 
 3. Technical Analysis with Ollama
-Generate stock charts with technical indicators (e.g., SMA, EMA).
+   Generate stock charts with technical indicators (e.g., SMA, EMA).
 
-Click "Run AI Analysis" to get buy/hold/sell recommendations from Ollama.
+   Click "Run AI Analysis" to get buy/hold/sell recommendations from Ollama.
 
 4. Portfolio Calculator
-Allocate investment amounts to selected stocks.
+   Allocate investment amounts to selected stocks.
 
 Set a financial goal and track progress over time.
 
@@ -192,7 +220,7 @@ print(sentiment)
 
 ## Example Outputs
 1. Portfolio Performance Chart
-Portfolio Performance
+   Portfolio Performance
 
 2. Sentiment Analysis Table
 Ticker	Date	Title	Sentiment
