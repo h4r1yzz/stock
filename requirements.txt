@@ -1,3 +1,4 @@
+streamlit
 numpy
 pandas
 yfinance
@@ -8,3 +9,4 @@ ta
 ollama
 finvizfinance
 joblib
+scikit-ollama

@@ -270,15 +270,16 @@ else:
             sentiment_df = sentiment_df[(sentiment_df['Date'] >= pd.to_datetime(sel_dt1)) & 
                                         (sentiment_df['Date'] <= pd.to_datetime(sel_dt2))]
 
-            # Add index column to display serial numbering in the table
-            sentiment_df['Index'] = range(1, len(sentiment_df) + 1)
-
             # Reorder columns for display
-            sentiment_df_display = sentiment_df[['Index', 'Date', 'Title', 'Link', 'Sentiment_few']]
+            sentiment_df_display = sentiment_df[['Date', 'Title', 'Link', 'Sentiment_few']]
 
-            # Display the sentiment analysis results in a table format
-            st.table(sentiment_df_display)
-
+            sentiment_df_display['Link'] = sentiment_df_display['Link'].apply(lambda x: f'<a href="{x}" target="_blank">{x}</a>')
+    
+            # Display the sentiment analysis results in a table formatst.markdown(
+            st.markdown(
+                sentiment_df_display.to_html(escape=False, index=False),
+                unsafe_allow_html=True
+            )
             st.write("---")
 
     with tab4:
